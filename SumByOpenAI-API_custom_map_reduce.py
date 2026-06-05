@@ -1,6 +1,5 @@
 # import os
 from typing import Any, Dict, List
-
 from langchain.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
@@ -11,30 +10,21 @@ from langchain_core.callbacks.stdout import StdOutCallbackHandler
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
-# from langchain_community.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
 from langchain_community.cache import SQLiteCache
 from langchain.globals import set_llm_cache
 
 from FileIO import save_summarization_results, ReadFile
+from LmStudioUtils import get_context_length_from_lm_studio
 
 
-
-FILE_PATH = "i:\Read\Художественное\Alias (8 book series)\[Alias Prequel 01] • Recruited (Mason, Lynn) (z-library.sk, 1lib.sk, z-lib.sk).epub"
-CONTEXT_LENGTH=11989
-# CONTEXT_LENGTH=11000
-# CONTEXT_LENGTH=32768
+FILE_PATH = "i:\Read\Художественное\Alias (8 book series)\[Alias Prequel 01] • Recruited (Mason, Lynn).epub"
 OPENAI_API_BASE="http://localhost:1234/v1"
 OPENAI_API_KEY="dummy_value"
-MODEL_NAME="t-pro-it-1.0@q4_k_m"
-# MODEL_NAME="t-pro-it-1.0@q5_k_m"
-
-
-# Prompt templates (Provided in the prompt)
-# reduce_prompt_template = """Ниже приведен набор резюме:
-# {docs}
-# Возьмите их и составьте окончательное, консолидированное резюме.
-# РЕЗЮМЕ:"""
+# MODEL_NAME="t-pro-it-2.1"
+MODEL_NAME="t-pro-it-1.0"
+# MODEL_NAME="gemma-3-27b-it"
+CONTEXT_LENGTH=0
 
 final_prompt_template = """Ниже приведен набор резюме:
 {docs}
@@ -96,7 +86,6 @@ def load_and_split_text(text: str, chunk_size: int , chunk_overlap: int = 100):
     Loads text from a file and splits it into chunks.
 
     Args:
-        file_path: Path to the text file.
         chunk_size: The desired chunk size.
         chunk_overlap: The overlap between chunks.
 
@@ -129,9 +118,6 @@ def load_and_split_text(text: str, chunk_size: int , chunk_overlap: int = 100):
         #  Convert text chunks into Langchain Document objects
         docs = [Document(page_content=t) for t in texts]
         return docs
-    except FileNotFoundError:
-        print(f"Error: File not found at path: {file_path}")
-        return []  # Return an empty list in case of an error
     except Exception as e:
         print(f"Error reading or splitting text: {e}")
         return []
@@ -189,8 +175,24 @@ def load_and_split_text(text: str, chunk_size: int , chunk_overlap: int = 100):
 #         return None
 
 
-def split_text_with_token_limit(llm: ChatOpenAI, text: str, context_length: int, overlap: int = 100):
-    """Splits text into chunks respecting the model's token limit."""
+def split_text_with_token_limit(llm: ChatOpenAI, text: str, context_length: int, overlap: int = 100, prompt: PromptTemplate = None):
+    """Splits text into chunks respecting the model's token limit.
+    
+    Accounts for prompt template overhead so that the full prompt (template + 
+    content + chat message formatting) stays within the model's context window.
+    """
+    # Estimate prompt template overhead: template tokens + ~20 tokens for chat wrapping
+    template_overhead = 0
+    if prompt is not None:
+        template_without_docs = prompt.template.replace("{docs}", "").replace("  ", " ").strip()
+        template_overhead = llm.get_num_tokens(template_without_docs) + 20  # +20 for chat message wrapping
+    
+    effective_limit = context_length - template_overhead
+    safety_margin = 0.85  # Conservative margin to avoid edge cases
+    max_chunk_tokens = int(effective_limit * safety_margin)
+    
+    print(f"Context: {context_length}, template_overhead: {template_overhead}, max_chunk_tokens: {max_chunk_tokens}")
+    
     chunks = []
     current_chunk = ""
     splitter = RecursiveCharacterTextSplitter(
@@ -210,7 +212,7 @@ def split_text_with_token_limit(llm: ChatOpenAI, text: str, context_length: int,
         ]
     )
     for piece in splitter.split_text(text):
-        if llm.get_num_tokens(current_chunk + piece) <= context_length * 0.99: #Safety margin
+        if llm.get_num_tokens(current_chunk + piece) <= max_chunk_tokens:
             current_chunk += piece
         else:
             chunks.append(Document(page_content=current_chunk))
@@ -242,20 +244,25 @@ def summarize_with_map_reduce(
     """Summarizes with map-reduce, handling context overflow."""
     try:
         callbacks = [StdOutCallbackHandler()]
-        # Define LLM Chains
-        # map_chain = LLMChain(llm=llm, prompt=map_prompt, verbose=True, callbacks=callbacks)
+        # Map chain (one chunk at a time, so room for template tokens is needed)
+        # Use a generous safety margin: chunk must not exceed 80% of context to leave room for prompt template
         map_chain = LLMChain(llm=llm, prompt=map_prompt, verbose=False, callbacks=[LoggingHandler()])
-        reduce_chain = LLMChain(llm=llm, prompt=reduce_prompt, verbose=True, callbacks=callbacks)
-        final_chain = LLMChain(llm=llm, prompt=final_prompt, verbose=True, callbacks=callbacks)
 
-        # Define StuffDocumentsChain
+        # Reduce chain (combines batches of intermediate summaries)
+        reduce_chain = LLMChain(llm=llm, prompt=reduce_prompt, verbose=True, callbacks=callbacks)
+
+        # Final consolidation chain - wrap in StuffDocumentsChain for token-aware batching
+        final_chain = LLMChain(llm=llm, prompt=final_prompt, verbose=True, callbacks=callbacks)
+        final_combine_chain = StuffDocumentsChain(
+            llm_chain=final_chain, document_variable_name="docs"
+        )
+
+        # Intermediate reduce chain (also wrapped for token-aware batching)
         combine_documents_chain = StuffDocumentsChain(
             llm_chain=reduce_chain, document_variable_name="docs"
-        ) 
-        # final_chain2 = StuffDocumentsChain(
-        #     llm_chain=final_chain, document_variable_name="docs"
-        # )
+        )
 
+        # --- MAP STEP ---
         intermediate_summaries = []
         for doc in tqdm(docs, desc="Mapping chunks"):
             intermediate_summary = map_chain.invoke(doc.page_content)
@@ -264,39 +271,75 @@ def summarize_with_map_reduce(
         # Print intermediate summaries and their sizes
         print("\nIntermediate Summaries:")
         for i, summary in enumerate(intermediate_summaries):
-            # token_count = count_tokens(summary, tokenizer)
-            print(f"  Chunk {i+1}: {summary[:100]}")  # Show first 100 chars
+            print(f"  Chunk {i+1}: {summary[:100]}")
 
+        # --- RECURSIVE REDUCE / FINAL STEP ---
+        # Convert all intermediate summaries to Documents for chain processing
+        current_batch = [Document(page_content=s) for s in intermediate_summaries]
 
-        final_summary = ""
-        intermediate_summaries_tokens = llm.get_num_tokens("\n\n".join(intermediate_summaries))
-        if intermediate_summaries_tokens > context_length * 0.99:
-            print(f'\nIntermediate summaries tokens {intermediate_summaries_tokens} are larger than context size {context_length}. Reducing summaries.')
+        # Keep reducing in rounds until everything fits in one final pass
+        # Estimate overhead for reduce/final prompt templates (whichever is larger)
+        reduce_template_overhead = llm.get_num_tokens(
+            reduce_prompt.template.replace("{docs}", "").replace("  ", " ").strip()
+        ) + 20
+        reduce_effective_limit = context_length - reduce_template_overhead
+        reduce_batch_margin = 0.85
+        
+        while len(current_batch) > 1:
+            combined_tokens = llm.get_num_tokens(
+                "\n\n".join(d.page_content for d in current_batch)
+            )
+            if combined_tokens <= reduce_effective_limit * 0.85:
+                break  # Fits in context, do one final consolidation
 
-            current_summary_batch = []
-            reduced_summaries = []
-            for doc in tqdm(intermediate_summaries, desc="Reducing summaries"):
-                if llm.get_num_tokens("\n\n".join([d.page_content for d in current_summary_batch] + [doc])) > context_length * 0.99: # Check before adding
+            print(f"\nIntermediate summaries total tokens {combined_tokens} > context. Reducing batch...")
+            next_batch = []
+            batch_buffer = []
+            batch_buffer_tokens = 0
+            max_batch_tokens = int(reduce_effective_limit * reduce_batch_margin)
+
+            for doc in tqdm(current_batch, desc="Reducing summaries"):
+                doc_tokens = llm.get_num_tokens(doc.page_content)
+                # Check if adding this doc would exceed context (with safety margin)
+                if batch_buffer and (batch_buffer_tokens + doc_tokens > max_batch_tokens):
                     # Reduce the current batch
-                    reduced_summaries.append(Document(page_content=combine_documents_chain.run(current_summary_batch)))
-                    current_summary_batch = [] #Start a new batch
-                current_summary_batch.append(Document(page_content=doc))
-            final_summary = final_chain.run(reduced_summaries)
-            
-        else:
-            final_summary = final_chain.run(intermediate_summaries)
+                    reduced = combine_documents_chain.run(batch_buffer)
+                    next_batch.append(Document(page_content=reduced))
+                    batch_buffer = [doc]
+                    batch_buffer_tokens = doc_tokens
+                else:
+                    batch_buffer.append(doc)
+                    batch_buffer_tokens += doc_tokens
 
+            # Don't forget the last batch
+            if batch_buffer:
+                reduced = combine_documents_chain.run(batch_buffer)
+                next_batch.append(Document(page_content=reduced))
+
+            current_batch = next_batch
+            print(f"Reduced to {len(current_batch)} summaries")
+
+        # Final consolidation
+        final_summary = final_combine_chain.run(current_batch)
         return final_summary, intermediate_summaries
 
     except Exception as e:
         print(f"Error during summarization: {e}")
-        return None, None # Return None for both to avoid unpacking errors
+        return None, None
 
 
 # Main Execution
 
 if __name__ == "__main__":
     try:
+        # Extract base URL (strip /v1 suffix if present)
+        api_base = OPENAI_API_BASE.replace("/v1", "").rstrip("/")
+        # Extract model key from MODEL_NAME (remove quantization suffix)
+        model_key = MODEL_NAME.split("@")[0]
+
+        # Get context_length dynamically from LM Studio API
+        CONTEXT_LENGTH = get_context_length_from_lm_studio(api_base, model_key)
+
         llm = ChatOpenAI(
             openai_api_base=OPENAI_API_BASE,
             openai_api_key=OPENAI_API_KEY,
@@ -317,7 +360,7 @@ if __name__ == "__main__":
         # docs = load_and_split_text(text, chunk_size=auto_chunk_size ) #* 0.95)
         # docs = load_and_split_text(text, chunk_size=auto_chunk_size * 0.95)
 
-        docs = split_text_with_token_limit(llm, text, CONTEXT_LENGTH)
+        docs = split_text_with_token_limit(llm, text, CONTEXT_LENGTH, prompt=map_prompt)
           
 
         if docs:  # Only proceed if documents were loaded successfully
@@ -347,7 +390,7 @@ if __name__ == "__main__":
                 print(final_summary)
 
                   # Save the results
-                save_summarization_results(FILE_PATH, final_summary, intermediate_summaries)
+                save_summarization_results(FILE_PATH, final_summary, intermediate_summaries, MODEL_NAME)
             else:
                 print("Summarization failed.")
 

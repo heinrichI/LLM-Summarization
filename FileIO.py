@@ -1,7 +1,7 @@
 from typing import List
 import os
 
-def save_summarization_results(file_path: str, final_summary: str, intermediate_summaries: List[str]):
+def save_summarization_results(file_path: str, final_summary: str, intermediate_summaries: List[str], model_name: str = ""):
     """
     Saves the summarization results to files near the source text file.
     
@@ -9,19 +9,24 @@ def save_summarization_results(file_path: str, final_summary: str, intermediate_
         file_path: Path to the original text file
         final_summary: The final summary text
         intermediate_summaries: List of intermediate summaries
+        model_name: Optional model name to include as a postfix in output filenames
     """
     try:
         # Get the directory and filename without extension
         file_dir = os.path.dirname(file_path)
         file_name = os.path.splitext(os.path.basename(file_path))[0]
         
+        # Sanitize model_name for safe filename (replace problematic chars with underscore)
+        safe_model_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in model_name)
+        model_suffix = f"_{safe_model_name}" if safe_model_name else ""
+        
         # Save final summary
-        final_summary_path = os.path.join(file_dir, f"{file_name}_final_summary.txt")
+        final_summary_path = os.path.join(file_dir, f"{file_name}{model_suffix}_final_summary.txt")
         with open(final_summary_path, 'w', encoding='utf-8') as f:
             f.write(final_summary)
 
         # Save intermediate summaries
-        intermediate_summary_path = os.path.join(file_dir, f"{file_name}_intermediate_summaries.txt")
+        intermediate_summary_path = os.path.join(file_dir, f"{file_name}{model_suffix}_intermediate_summaries.txt")
         with open(intermediate_summary_path, 'w', encoding='utf-8') as f:
             for i, summary in enumerate(intermediate_summaries, 1):
                 f.write(f"=== Intermediate Summary {i} ===\n")

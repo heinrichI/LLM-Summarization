@@ -1,12 +1,10 @@
 import os
 from typing import List
-
 from langchain.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from tqdm import tqdm  # Import tqdm
 from langchain_core.callbacks.stdout import StdOutCallbackHandler
-# from langchain_community.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
 from langchain_community.cache import SQLiteCache
 from langchain.globals import set_llm_cache
@@ -18,16 +16,26 @@ from langchain.chains import (
                 MapReduceDocumentsChain,
             )
 
-# FILE_PATH = "f:\Повелитель мух (Голдинг Уильям) (Z-Library).fb2.zip" # Replace with your file path. Ensure this file exists.
-# FILE_PATH = "f:\Повелитель мух (Уильям Голдинг) (Z-Library).epub"
-# FILE_PATH = "f:\Черная Вдова. Красная метка (Маргарет Штоль) (Z-Library).epub"
-FILE_PATH = "f:\Miles to Go (Cyrus Miley) (Z-Library).epub"
+from LmStudioUtils import get_context_length_from_lm_studio
+
+
+FILE_PATH = "i:\Read\Художественное\Alias (8 book series)\[Alias Prequel 01] • Recruited (Mason, Lynn).epub"
 # FILE_PATH = "h:\AI_Summarize\catwoman.txt_Ascii.txt"
-CONTEXT_LENGTH=11989
 OPENAI_API_BASE="http://localhost:1234/v1"
 OPENAI_API_KEY="dummy_value"
-MODEL_NAME="t-pro-it-1.0@q4_k_m"
+MODEL_NAME="t-pro-it-2.1"
+# MODEL_NAME="t-pro-it-1.0@q4_k_m"
 # MODEL_NAME="t-pro-it-1.0@q5_k_m"
+# Extract base URL (strip /v1 suffix if present)
+_api_base = OPENAI_API_BASE.replace("/v1", "").rstrip("/")
+# Extract model key from MODEL_NAME (remove quantization suffix)
+_model_key = MODEL_NAME.split("@")[0]
+CONTEXT_LENGTH=get_context_length_from_lm_studio(_api_base, _model_key)
+
+if CONTEXT_LENGTH is None:
+    print(f"Error: Model '{MODEL_NAME}' not found or not loaded in LM Studio at {OPENAI_API_BASE}.")
+    print("Please ensure the model is loaded in LM Studio and try again.")
+    exit(1)
 
 
 reduce_prompt_template = """Ниже приведен набор резюме:
@@ -226,7 +234,7 @@ if __name__ == "__main__":
                 print(final_summary)
 
                   # Save the results
-                save_summarization_results(FILE_PATH, final_summary, intermediate_summaries)
+                save_summarization_results(FILE_PATH, final_summary, intermediate_summaries, MODEL_NAME)
             else:
                 print("Summarization failed.")
 
