@@ -20,8 +20,16 @@ from FileIO import save_summarization_results, ReadFile
 
 
 
-
-FILE_PATH = "f:\Miles to Go (Cyrus Miley).epub"
+# FILE_PATH = "f:\Повелитель мух (Голдинг Уильям) (Z-Library).fb2.zip" # Replace with your file path. Ensure this file exists.
+# FILE_PATH = "f:\Повелитель мух (Уильям Голдинг) (Z-Library).epub"
+# FILE_PATH = "i:\Read\Художественное\Крайтон Майкл\Крайтон М. - Парк Юрского периода - 2015.fb2"
+# FILE_PATH = "f:\patriot_navalny.epub"
+# FILE_PATH = "f:\Черная Вдова. Красная метка (Маргарет Штоль) (Z-Library).epub"
+FILE_PATH = "f:\Miles to Go (Cyrus Miley) (Z-Library).epub"
+# FILE_PATH = "f:\ACDC. В аду мне нравится больше. Биография группы от Мика Уолла (Мик Уолл) (Z-Library).fb2"
+# FILE_PATH = "f:\ACDC. В аду мне нравится больше. Биография группы от Мика Уолла (Мик Уолл) (Z-Library).epub"
+# FILE_PATH = "i:\Read\Christmas\The Best Christmas Pageant Ever - Barbara Robinson.epub"
+# FILE_PATH = "f:\Япония изнутри. Как на самом деле живут в Стране восходящего солнца (Марина Юрьевна Чижова) (Z-Library).fb2"
 CONTEXT_LENGTH=11989
 # CONTEXT_LENGTH=11000
 # CONTEXT_LENGTH=32768

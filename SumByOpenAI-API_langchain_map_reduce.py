@@ -18,7 +18,11 @@ from langchain.chains import (
                 MapReduceDocumentsChain,
             )
 
-FILE_PATH = "h:\AI_Summarize\catwoman.txt_Ascii.txt"
+# FILE_PATH = "f:\Повелитель мух (Голдинг Уильям) (Z-Library).fb2.zip" # Replace with your file path. Ensure this file exists.
+# FILE_PATH = "f:\Повелитель мух (Уильям Голдинг) (Z-Library).epub"
+# FILE_PATH = "f:\Черная Вдова. Красная метка (Маргарет Штоль) (Z-Library).epub"
+FILE_PATH = "f:\Miles to Go (Cyrus Miley) (Z-Library).epub"
+# FILE_PATH = "h:\AI_Summarize\catwoman.txt_Ascii.txt"
 CONTEXT_LENGTH=11989
 OPENAI_API_BASE="http://localhost:1234/v1"
 OPENAI_API_KEY="dummy_value"
@@ -26,11 +30,6 @@ MODEL_NAME="t-pro-it-1.0@q4_k_m"
 # MODEL_NAME="t-pro-it-1.0@q5_k_m"
 
 
-# Prompt templates (Provided in the prompt)
-# reduce_prompt_template = """Ниже приведен набор резюме:
-# {docs}
-# Возьмите их и составьте окончательное, консолидированное резюме.
-# РЕЗЮМЕ:"""
 reduce_prompt_template = """Ниже приведен набор резюме:
 # {docs}
 # Возьмите их и составьте окончательное, консолидированное резюме.
@@ -70,7 +69,6 @@ def load_and_split_text(text: str, chunk_size: int , chunk_overlap: int = 100):
     Loads text from a file and splits it into chunks.
 
     Args:
-        file_path: Path to the text file.
         chunk_size: The desired chunk size.
         chunk_overlap: The overlap between chunks.
 
@@ -103,15 +101,10 @@ def load_and_split_text(text: str, chunk_size: int , chunk_overlap: int = 100):
         #  Convert text chunks into Langchain Document objects
         docs = [Document(page_content=t) for t in texts]
         return docs
-    except FileNotFoundError:
-        print(f"Error: File not found at path: {file_path}")
-        return []  # Return an empty list in case of an error
     except Exception as e:
         print(f"Error reading or splitting text: {e}")
         return []
 
-
-# Summarization using Map Reduce
 
 def summarize_with_map_reduce(
     llm: ChatOpenAI, docs: List[Document], map_prompt: PromptTemplate, reduce_prompt: PromptTemplate, context_length: int
@@ -129,67 +122,6 @@ def summarize_with_map_reduce(
         The final summarized text.
     """
     try:
-
-            # # This controls how each document will be formatted. Specifically,
-            # # it will be passed to `format_document` - see that function for more
-            # # details.
-            # document_prompt = PromptTemplate(
-            #     input_variables=["page_content"],
-            #      template="{page_content}"
-            # )
-            # document_variable_name = "context"
-            # llm = OpenAI()
-            # # The prompt here should take as an input variable the
-            # # `document_variable_name`
-            # prompt = PromptTemplate.from_template(
-            #     "Summarize this content: {context}"
-            # )
-            # llm_chain = LLMChain(llm=llm, prompt=prompt)
-            # # We now define how to combine these summaries
-            # reduce_prompt = PromptTemplate.from_template(
-            #     "Combine these summaries: {context}"
-            # )
-            # reduce_llm_chain = LLMChain(llm=llm, prompt=reduce_prompt)
-            # combine_documents_chain = StuffDocumentsChain(
-            #     llm_chain=reduce_llm_chain,
-            #     document_prompt=document_prompt,
-            #     document_variable_name=document_variable_name
-            # )
-            # reduce_documents_chain = ReduceDocumentsChain(
-            #     combine_documents_chain=combine_documents_chain,
-            # )
-            # chain = MapReduceDocumentsChain(
-            #     llm_chain=llm_chain,
-            #     reduce_documents_chain=reduce_documents_chain,
-            # )
-            # # If we wanted to, we could also pass in collapse_documents_chain
-            # # which is specifically aimed at collapsing documents BEFORE
-            # # the final call.
-            # prompt = PromptTemplate.from_template(
-            #     "Collapse this content: {context}"
-            # )
-            # llm_chain = LLMChain(llm=llm, prompt=prompt)
-            # collapse_documents_chain = StuffDocumentsChain(
-            #     llm_chain=llm_chain,
-            #     document_prompt=document_prompt,
-            #     document_variable_name=document_variable_name
-            # )
-            # reduce_documents_chain = ReduceDocumentsChain(
-            #     combine_documents_chain=combine_documents_chain,
-            #     collapse_documents_chain=collapse_documents_chain,
-            # )
-            # chain = MapReduceDocumentsChain(
-            #     llm_chain=llm_chain,
-            #     reduce_documents_chain=reduce_documents_chain,
-            # )
-
-
-
-
-
-
-
-
         callbacks = [StdOutCallbackHandler()]
         # Define LLM Chains
         map_chain = LLMChain(llm=llm, prompt=map_prompt, verbose=False)
@@ -206,7 +138,6 @@ def summarize_with_map_reduce(
             ),
             document_variable_name="docs",
         )
-
 
         # Actually do the summarization
         intermediate_summaries = []

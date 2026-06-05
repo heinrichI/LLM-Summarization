@@ -20,7 +20,7 @@ from FileIO import save_summarization_results, ReadFile
 
 
 
-FILE_PATH = "f:\Miles to Go.epub"
+FILE_PATH = "i:\Read\Художественное\Alias (8 book series)\[Alias Prequel 01] • Recruited (Mason, Lynn) (z-library.sk, 1lib.sk, z-lib.sk).epub"
 CONTEXT_LENGTH=11989
 # CONTEXT_LENGTH=11000
 # CONTEXT_LENGTH=32768
